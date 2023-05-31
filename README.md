@@ -18,7 +18,7 @@
 # Install & Upgrade
 
 ```
-bash <(curl -Ls (https://raw.githubusercontent.com/mohohohoho/3x-ui/main/install.sh))
+bash <(curl -Ls https://raw.githubusercontent.com/mohohohoho/3x-ui/main/install.sh)
 ```
 
 # Install custom version
