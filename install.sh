@@ -43,7 +43,10 @@ elif [[ "${release}" == "ubuntu" ]]; then
     if [[ ${os_version} -lt 20 ]]; then
         echo -e "${red}please use Ubuntu 20 or higher version！${plain}\n" && exit 1
     fi
-
+elif [[ "${release}" == "almalinux" ]]; then
+    if [[ ${os_version} -lt 8 ]]; then
+        echo -e "${red}please use Almalinux 8 or higher version！${plain}\n" && exit 1
+    fi
 elif [[ "${release}" == "fedora" ]]; then
     if [[ ${os_version} -lt 36 ]]; then
         echo -e "${red}please use Fedora 36 or higher version！${plain}\n" && exit 1
