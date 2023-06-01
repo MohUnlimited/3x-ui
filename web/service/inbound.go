@@ -48,7 +48,7 @@ func (s *InboundService) checkPortExist(port int, ignoreId int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	return count > 10, nil
 }
 
 func (s *InboundService) GetClients(inbound *model.Inbound) ([]model.Client, error) {
