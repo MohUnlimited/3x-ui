@@ -236,7 +236,6 @@ func (s *SubService) genVmessLink(inbound *model.Inbound, email string) string {
 		}
 	}
 	obj["id"] = clients[clientIndex].ID
-	obj["aid"] = clients[clientIndex].AlterIds
 
 	if len(domains) > 0 {
 		links := ""
@@ -435,6 +434,10 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 		}
 	}
 
+	if security != "tls" && security != "reality" && security != "xtls" {
+		params["security"] = "none"
+	}
+
 	link := fmt.Sprintf("vless://%s@%s:%d", uuid, address, port)
 	url, _ := url.Parse(link)
 	q := url.Query()
@@ -576,7 +579,7 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 			if pbkValue, ok := searchKey(realitySettings, "publicKey"); ok {
 				params["pbk"], _ = pbkValue.(string)
 			}
-			if sidValue, ok := searchKey(realitySettings, "shortIds"); ok {
+			if sidValue, ok := searchKey(realitySetting, "shortIds"); ok {
 				shortIds, _ := sidValue.([]interface{})
 				params["sid"], _ = shortIds[0].(string)
 			}
@@ -637,6 +640,10 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 		if serverName != "" {
 			address = serverName
 		}
+	}
+
+	if security != "tls" && security != "reality" && security != "xtls" {
+		params["security"] = "none"
 	}
 
 	link := fmt.Sprintf("trojan://%s@%s:%d", password, address, port)

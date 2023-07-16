@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
 	"x-ui/config"
 	"x-ui/database"
 	"x-ui/logger"
@@ -86,31 +87,24 @@ type ServerService struct {
 	inboundService InboundService
 }
 
-const DebugMode = false // Set to true during development
-
 func getPublicIP(url string) string {
 	resp, err := http.Get(url)
 	if err != nil {
-		if DebugMode {
-			logger.Warning("get public IP failed:", err)
-		}
 		return "N/A"
 	}
 	defer resp.Body.Close()
 
 	ip, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if DebugMode {
-			logger.Warning("read public IP failed:", err)
-		}
 		return "N/A"
 	}
 
-	if string(ip) == "" {
-		return "N/A" // default value
+	ipString := string(ip)
+	if ipString == "" {
+		return "N/A"
 	}
 
-	return string(ip)
+	return ipString
 }
 
 func (s *ServerService) GetStatus(lastStatus *Status) *Status {
@@ -257,7 +251,6 @@ func (s *ServerService) GetXrayVersions() ([]string, error) {
 }
 
 func (s *ServerService) StopXrayService() (string error) {
-
 	err := s.xrayService.StopXray()
 	if err != nil {
 		logger.Error("stop xray failed:", err)
@@ -268,7 +261,6 @@ func (s *ServerService) StopXrayService() (string error) {
 }
 
 func (s *ServerService) RestartXrayService() (string error) {
-
 	s.xrayService.StopXray()
 	defer func() {
 		err := s.xrayService.RestartXray(true)
@@ -384,19 +376,19 @@ func (s *ServerService) UpdateXray(version string) error {
 	}
 
 	return nil
-
 }
 
-func (s *ServerService) GetLogs(count string) ([]string, error) {
-	// Define the journalctl command and its arguments
+func (s *ServerService) GetLogs(count string, logLevel string) ([]string, error) {
 	var cmdArgs []string
 	if runtime.GOOS == "linux" {
 		cmdArgs = []string{"journalctl", "-u", "x-ui", "--no-pager", "-n", count}
+		if logLevel != "" {
+			cmdArgs = append(cmdArgs, "-p", logLevel)
+		}
 	} else {
 		return []string{"Unsupported operating system"}, nil
 	}
 
-	// Run the command
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	var out bytes.Buffer
 	cmd.Stdout = &out

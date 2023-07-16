@@ -3,29 +3,22 @@ package xray
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
-	"time"
+	"syscall"
 	"x-ui/config"
+	"x-ui/logger"
 	"x-ui/util/common"
 
 	"github.com/Workiva/go-datastructures/queue"
-	statsservice "github.com/xtls/xray-core/app/stats/command"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
-
-var trafficRegex = regexp.MustCompile("(inbound|outbound)>>>([^>]+)>>>traffic>>>(downlink|uplink)")
-var ClientTrafficRegex = regexp.MustCompile("(user)>>>([^>]+)>>>traffic>>>(downlink|uplink)")
 
 func GetBinaryName() string {
 	return fmt.Sprintf("xray-%s-%s", runtime.GOOS, runtime.GOARCH)
@@ -51,13 +44,50 @@ func GetIranPath() string {
 	return config.GetBinFolderPath() + "/iran.dat"
 }
 
-func GetAllowedIPsPath() string {
-	return config.GetBinFolderPath() + "/AllowedIPs"
+func GetBlockedIPsPath() string {
+	return config.GetBinFolderPath() + "/BlockedIps"
+}
+
+func GetIPLimitLogPath() string {
+	return config.GetLogFolder() + "/3xipl.log"
+}
+
+func GetIPLimitBannedLogPath() string {
+	return config.GetLogFolder() + "/3xipl-banned.log"
+}
+
+func GetAccessPersistentLogPath() string {
+	return config.GetLogFolder() + "/3xipl-access-persistent.log"
+}
+
+func GetAccessLogPath() string {
+	config, err := os.ReadFile(GetConfigPath())
+	if err != nil {
+		logger.Warningf("Something went wrong: %s", err)
+	}
+
+	jsonConfig := map[string]interface{}{}
+	err = json.Unmarshal([]byte(config), &jsonConfig)
+	if err != nil {
+		logger.Warningf("Something went wrong: %s", err)
+	}
+
+	if jsonConfig["log"] != nil {
+		jsonLog := jsonConfig["log"].(map[string]interface{})
+		if jsonLog["access"] != nil {
+
+			accessLogPath := jsonLog["access"].(string)
+
+			return accessLogPath
+		}
+	}
+	return ""
 }
 
 func stopProcess(p *Process) {
 	p.Stop()
 }
+
 
 type Process struct {
 	*process
@@ -173,7 +203,7 @@ func (p *process) Start() (err error) {
 		return common.NewErrorf("Failed to write configuration file: %v", err)
 	}
 
-	cmd := exec.Command(GetBinaryPath(), "-c", configPath, "-restrictedIPsPath", GetAllowedIPsPath())
+	cmd := exec.Command(GetBinaryPath(), "-c", configPath, "-restrictedIPsPath", GetBlockedIPsPath())
 	p.cmd = cmd
 
 	stdReader, err := cmd.StdoutPipe()
@@ -236,87 +266,5 @@ func (p *process) Stop() error {
 	if !p.IsRunning() {
 		return errors.New("xray is not running")
 	}
-	return p.cmd.Process.Kill()
-}
-
-func (p *process) GetTraffic(reset bool) ([]*Traffic, []*ClientTraffic, error) {
-	if p.apiPort == 0 {
-		return nil, nil, common.NewError("xray api port wrong:", p.apiPort)
-	}
-	conn, err := grpc.Dial(fmt.Sprintf("127.0.0.1:%v", p.apiPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, nil, err
-	}
-	defer conn.Close()
-
-	client := statsservice.NewStatsServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	request := &statsservice.QueryStatsRequest{
-		Reset_: reset,
-	}
-	resp, err := client.QueryStats(ctx, request)
-	if err != nil {
-		return nil, nil, err
-	}
-	tagTrafficMap := map[string]*Traffic{}
-	emailTrafficMap := map[string]*ClientTraffic{}
-
-	clientTraffics := make([]*ClientTraffic, 0)
-	traffics := make([]*Traffic, 0)
-	for _, stat := range resp.GetStat() {
-		matchs := trafficRegex.FindStringSubmatch(stat.Name)
-		if len(matchs) < 3 {
-
-			matchs := ClientTrafficRegex.FindStringSubmatch(stat.Name)
-			if len(matchs) < 3 {
-				continue
-			} else {
-
-				isUser := matchs[1] == "user"
-				email := matchs[2]
-				isDown := matchs[3] == "downlink"
-				if !isUser {
-					continue
-				}
-				traffic, ok := emailTrafficMap[email]
-				if !ok {
-					traffic = &ClientTraffic{
-						Email: email,
-					}
-					emailTrafficMap[email] = traffic
-					clientTraffics = append(clientTraffics, traffic)
-				}
-				if isDown {
-					traffic.Down = stat.Value
-				} else {
-					traffic.Up = stat.Value
-				}
-
-			}
-			continue
-		}
-		isInbound := matchs[1] == "inbound"
-		tag := matchs[2]
-		isDown := matchs[3] == "downlink"
-		if tag == "api" {
-			continue
-		}
-		traffic, ok := tagTrafficMap[tag]
-		if !ok {
-			traffic = &Traffic{
-				IsInbound: isInbound,
-				Tag:       tag,
-			}
-			tagTrafficMap[tag] = traffic
-			traffics = append(traffics, traffic)
-		}
-		if isDown {
-			traffic.Down = stat.Value
-		} else {
-			traffic.Up = stat.Value
-		}
-	}
-
-	return traffics, clientTraffics, nil
+	return p.cmd.Process.Signal(syscall.SIGTERM)
 }
